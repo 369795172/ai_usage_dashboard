@@ -538,6 +538,53 @@ def export_cursor(cookie_str, start_ts, end_ts):
         writer.writerows(rows)
     return csv_path
 
+
+def parse_cursor_usage_summary(body: dict) -> list[QuotaSnapshot]:
+    """cursor.com/api/usage-summary -> unified QuotaSnapshot list.
+
+    Only the monthly included-plan pool is surfaced; on-demand usage has its
+    own separate spend cap and is intentionally not a plan-quota bar.
+    plan.used/limit are denominated in compute units whose semantics vary by
+    plan, so only totalPercentUsed is trusted for display.
+    """
+    individual = body.get('individualUsage') if isinstance(body.get('individualUsage'), dict) else {}
+    plan = individual.get('plan') if isinstance(individual.get('plan'), dict) else {}
+    if not plan.get('enabled'):
+        return []
+    pct = plan.get('totalPercentUsed')
+    try:
+        percentage = max(0, min(100, int(round(float(pct))))) if pct is not None else 0
+    except (TypeError, ValueError):
+        percentage = 0
+    snapshot: QuotaSnapshot = {
+        'provider': 'cursor',
+        'label': 'monthly',
+        'percentage': percentage,
+    }
+    cycle_end = body.get('billingCycleEnd')
+    if isinstance(cycle_end, str) and cycle_end:
+        try:
+            reset_dt = datetime.fromisoformat(cycle_end.replace('Z', '+00:00'))
+            snapshot['next_reset_time_ms'] = int(reset_dt.timestamp() * 1000)
+            snapshot['next_reset_iso'] = reset_dt.astimezone().strftime('%Y-%m-%dT%H:%M:%S')
+        except ValueError:
+            pass
+    return [snapshot]
+
+
+def export_cursor_quota(cookie_str: str) -> list[QuotaSnapshot]:
+    """Fetch the monthly plan usage summary from cursor.com with the dashboard cookie."""
+    url = 'https://cursor.com/api/usage-summary'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:151.0) Gecko/20100101 Firefox/151.0',
+        'Accept': 'application/json',
+        'Referer': 'https://cursor.com/dashboard/usage',
+        'Cookie': cookie_str,
+    }
+    resp = requests.get(url, headers=headers, timeout=30)
+    resp.raise_for_status()
+    return parse_cursor_usage_summary(resp.json())
+
 def export_glm(bearer_token, start_date, end_date):
     """Export GLM usage data, splitting into monthly chunks to avoid API limits."""
     start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
@@ -2103,7 +2150,7 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
         print(f"Failed to fetch Claude Code quota: {e}")
         claude_quota = []
 
-    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok.
+    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor.
     print("Loading Antigravity IDE quota from live Language Server...")
     antigravity_quota: list[QuotaSnapshot] = []
     try:
@@ -2119,7 +2166,15 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
             grok_quota = cast(list[QuotaSnapshot], _grok_usage.export_grok_quota(grok_cookie))
         except Exception as e:
             print(f"Failed to fetch Grok quota: {e}")
-    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota
+
+    cursor_quota: list[QuotaSnapshot] = []
+    if cursor_cookie:
+        print("Loading Cursor usage-summary quota...")
+        try:
+            cursor_quota = export_cursor_quota(cursor_cookie)
+        except Exception as e:
+            print(f"Failed to fetch Cursor quota: {e}")
+    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota
 
     print("Loading Claude Code data...")
     start_d = datetime.strptime(start_date, '%Y-%m-%d').date()
