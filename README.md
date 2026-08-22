@@ -26,6 +26,7 @@ You do not need every platform connected on day one. The tool enables each sourc
 - **Cursor**: To include Cursor dashboard exports, set `CURSOR_COOKIE` in `.env`. This browser cookie must stay private.
 - **Grok**: To include SuperGrok / X Premium weekly usage pool, set `GROK_COOKIE` in `.env` (browser cookie from grok.com while logged in). This cookie must stay private. A 0% week omits the float field in the grpc-web response (proto3 default); the parser maps that to 0% so the quota bar still appears. Token category `grok` is filled from local OpenCode usage independently of the cookie.
 - **GLM/Z.ai**: To include the GLM/Z.ai usage API, set `GLM_BEARER_TOKEN` in `.env`. This bearer token must stay private.
+- **Tavily**: To include the Tavily plan credit quota, set `TAVILY_API_KEY` in `.env`. The usage endpoint reports account-level plan credits (used/remaining/percentage); Tavily does not expose a reset timestamp, so the quota bar carries usage counts only.
 
 A minimal `.env` can be empty. The tool will still use local sources it can discover automatically; sources without credentials are skipped or read from existing local caches.
 
@@ -94,6 +95,7 @@ If a LAN device needs access, configure the host through private local config or
 - Codex: `npx @ccusage/codex@latest --json`
 - Cursor: `cursor.com/api/dashboard/export-usage-events-csv`, with a private browser cookie
 - GLM/Z.ai: usage API, with a private bearer token
+- Tavily: `api.tavily.com/usage` account plan credits, with a private API key
 - Claude Code: local Claude Code JSONL session logs
 - DeepSeek Harness (DSH): local `~/.dsh/sessions` logs (plain or Zstandard-compressed JSONL; the `zstd` binary must be on PATH for compressed logs). Z.ai GLM usage routed through DSH joins the GLM bucket because the Z.ai usage API does not see it; local models (e.g. LM Studio) are reported in the Other bucket at $0
 - OpenCode: local OpenCode SQLite database; optional archive support can use a separate `opencode_skill` installation

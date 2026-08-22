@@ -26,6 +26,7 @@ import requests
 import antigravity_usage as _antigravity_usage
 import dsh_usage as _dsh_usage
 import grok_usage as _grok_usage
+import tavily_usage as _tavily_usage
 from pricing_config import get_pricing, calc_cost
 
 plt.rcParams['axes.unicode_minus'] = False
@@ -2150,7 +2151,7 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
         print(f"Failed to fetch Claude Code quota: {e}")
         claude_quota = []
 
-    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor.
+    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor -> Tavily.
     print("Loading Antigravity IDE quota from live Language Server...")
     antigravity_quota: list[QuotaSnapshot] = []
     try:
@@ -2174,7 +2175,16 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
             cursor_quota = export_cursor_quota(cursor_cookie)
         except Exception as e:
             print(f"Failed to fetch Cursor quota: {e}")
-    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota
+
+    tavily_quota: list[QuotaSnapshot] = []
+    tavily_key = os.environ.get('TAVILY_API_KEY', '')
+    if tavily_key:
+        print("Loading Tavily plan credit usage...")
+        try:
+            tavily_quota = cast(list[QuotaSnapshot], _tavily_usage.export_tavily_quota(tavily_key))
+        except Exception as e:
+            print(f"Failed to fetch Tavily quota: {e}")
+    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota + tavily_quota
 
     print("Loading Claude Code data...")
     start_d = datetime.strptime(start_date, '%Y-%m-%d').date()
