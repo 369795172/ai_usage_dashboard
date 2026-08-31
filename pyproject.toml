@@ -37,6 +37,7 @@ py-modules = [
     "firmware_logic",
     "local_display_service",
     "opencode_token_analyzer",
+    "openrouter_usage",
     "pricing_config",
 ]
 
