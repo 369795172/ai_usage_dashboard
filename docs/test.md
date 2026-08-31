@@ -12,6 +12,13 @@ Run from the repo root:
 
 These tests should not require real provider credentials or network calls. They cover token aggregation, pricing logic, FastAPI contract behavior, local cache fallback behavior, and GLM timestamp parsing.
 
+OpenRouter coverage (all monkeypatched, no network):
+
+- `tests/test_openrouter_usage.py`: parse/fetch/export of the key spend window (`limit - limit_remaining`, never lifetime `usage`)
+- `tests/test_auto_usage.py`: `OPENROUTER_API_KEY` wiring in `build_latest_dashboard_payload` (key present appends snapshot; key absent skips export; export error still builds other quotas)
+- `tests/test_dashboard_models.py`: optional `usage_usd` / `remaining_usd` on `QuotaSnapshot` and `AutomationQuotaSnapshot` (default `None` so old payloads validate; every field has a description)
+- `tests/test_local_display_service.py`: `GET /api/v1/quotas` passes USD fields through when present and emits `null` when absent
+
 ## Service Smoke Test
 
 Start the local service:

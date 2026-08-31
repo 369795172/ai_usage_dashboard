@@ -16,6 +16,7 @@ This skill is local-first. It reads data from the user's machine and writes loca
 - Cursor: optional `CURSOR_COOKIE` in `.env`.
 - GLM/Z.ai: optional `GLM_BEARER_TOKEN` in `.env`. When present, the dashboard also fetches the coding-plan quota snapshot (5-hour / weekly token quotas and the monthly web-search/reader/zread quota) and prints it after the token table; the same snapshot is embedded in the JSON payload under `glm_quota`.
 - Ollama: optional `OLLAMA_COOKIE` in `.env` (full browser cookie string from ollama.com/settings). When present, the dashboard fetches the settings HTML and parses the Session (5h) and Weekly usage bars into the unified `quotas` array.
+- OpenRouter: optional `OPENROUTER_API_KEY` in `.env`. A normal inference key is enough for the spend-window bar (`GET /api/v1/key`: window spend is `limit - limit_remaining`, labeled from `limit_reset`). A management key is required for `/credits` and `/activity` per-model activity, which this dashboard does not read yet. Never print or commit the key.
 - Codex: no key required. The dashboard reads `rate_limits` from the local Codex session JSONL.
 
 Never print `.env`, cookies, bearer tokens, generated usage exports, or local dashboard JSON unless the user explicitly asks for a sanitized excerpt.
