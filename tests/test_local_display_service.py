@@ -88,6 +88,13 @@ def test_get_quotas_returns_compact_automation_shape(monkeypatch):
                 "usage": 1000,
                 "remaining": 3000,
             },
+            {
+                "provider": "openrouter",
+                "label": "Weekly Spend",
+                "percentage": 30,
+                "usage_usd": 3.0,
+                "remaining_usd": 7.0,
+            },
         ],
     }
     monkeypatch.setattr(local_display_service, "_cached_payload", payload)
@@ -107,6 +114,8 @@ def test_get_quotas_returns_compact_automation_shape(monkeypatch):
                 "next_reset_iso": "2026-07-12T00:54:01",
                 "usage": None,
                 "remaining": None,
+                "usage_usd": None,
+                "remaining_usd": None,
             },
             {
                 "provider": "glm",
@@ -117,6 +126,20 @@ def test_get_quotas_returns_compact_automation_shape(monkeypatch):
                 "next_reset_iso": None,
                 "usage": 1000,
                 "remaining": 3000,
+                "usage_usd": None,
+                "remaining_usd": None,
+            },
+            {
+                "provider": "openrouter",
+                "label": "Weekly Spend",
+                "used_percentage": 30,
+                "remaining_percentage": 70,
+                "next_reset_time_ms": None,
+                "next_reset_iso": None,
+                "usage": None,
+                "remaining": None,
+                "usage_usd": 3.0,
+                "remaining_usd": 7.0,
             },
         ],
     }

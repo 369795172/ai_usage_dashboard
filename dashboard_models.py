@@ -92,6 +92,8 @@ class QuotaSnapshot(BaseModel):
     next_reset_iso: Optional[str] = Field(default=None, description='Local ISO timestamp (seconds precision) at which the window resets. Derived from next_reset_time_ms.')
     usage: Optional[int] = Field(default=None, description='Absolute count already used. Present only for the GLM monthly tool quota.')
     remaining: Optional[int] = Field(default=None, description='Remaining count before the window resets. Present only for the GLM monthly tool quota.')
+    usage_usd: Optional[float] = Field(default=None, description='USD already spent in the current key spend window. Present for OpenRouter; the window spend is limit minus limit_remaining, not lifetime usage.')
+    remaining_usd: Optional[float] = Field(default=None, description='USD remaining in the current key spend window. Present for OpenRouter.')
 
 
 class AutomationQuotaSnapshot(BaseModel):
@@ -105,6 +107,8 @@ class AutomationQuotaSnapshot(BaseModel):
     next_reset_iso: Optional[str] = Field(default=None, description='Local ISO timestamp at which the quota window resets. May be absent.')
     usage: Optional[int] = Field(default=None, description='Absolute count already used when the upstream provider exposes it.')
     remaining: Optional[int] = Field(default=None, description='Absolute count remaining when the upstream provider exposes it.')
+    usage_usd: Optional[float] = Field(default=None, description='USD already spent in the current window when the upstream provider exposes it.')
+    remaining_usd: Optional[float] = Field(default=None, description='USD remaining in the current window when the upstream provider exposes it.')
 
 
 class QuotasResponse(BaseModel):

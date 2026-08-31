@@ -179,3 +179,53 @@ def test_quotas_response_requires_explicit_automation_percentages():
 
     assert response.quotas[0].used_percentage == 29
     assert response.quotas[0].remaining_percentage == 71
+
+
+def test_quota_snapshot_accepts_openrouter_usd_fields():
+    snap = QuotaSnapshot.model_validate({
+        'provider': 'openrouter',
+        'label': 'Weekly Spend',
+        'percentage': 30,
+        'usage_usd': 3.0,
+        'remaining_usd': 7.0,
+    })
+
+    assert snap.usage_usd == 3.0
+    assert snap.remaining_usd == 7.0
+
+
+def test_quota_snapshot_usd_fields_default_none_so_old_payloads_round_trip():
+    snap = QuotaSnapshot.model_validate({
+        'provider': 'codex',
+        'label': '5 Hours',
+        'percentage': 12,
+    })
+
+    assert snap.usage_usd is None
+    assert snap.remaining_usd is None
+    dumped = snap.model_dump(exclude_defaults=True)
+    assert 'usage_usd' not in dumped
+    assert 'remaining_usd' not in dumped
+
+
+def test_automation_quota_snapshot_accepts_usd_fields():
+    snap = AutomationQuotaSnapshot.model_validate({
+        'provider': 'openrouter',
+        'label': 'Weekly Spend',
+        'used_percentage': 30,
+        'remaining_percentage': 70,
+        'usage_usd': 3.0,
+        'remaining_usd': 7.0,
+    })
+
+    assert snap.usage_usd == 3.0
+    assert snap.remaining_usd == 7.0
+    assert snap.usage is None
+    assert snap.remaining is None
+
+
+def test_quota_usd_fields_carry_descriptions():
+    for model_cls in (QuotaSnapshot, AutomationQuotaSnapshot):
+        for name in ('usage_usd', 'remaining_usd'):
+            field = model_cls.model_fields[name]
+            assert field.description, f'{model_cls.__name__}.{name} missing description'

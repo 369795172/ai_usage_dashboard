@@ -13,6 +13,7 @@ from auto_usage import (
     OpencodeTurnMessage,
     build_eink_dashboard_payload,
     build_codex_turn_intervals,
+    build_latest_dashboard_payload,
     build_opencode_turn_intervals,
     calc_claude_code_cost,
     classify_opencode_bucket,
@@ -1395,3 +1396,125 @@ def test_export_claude_code_quota_handles_missing_windows(monkeypatch):
     assert len(snapshots) == 1
     assert snapshots[0]['label'] == '5h'
     assert snapshots[0]['percentage'] == 10
+
+
+_CODEX_SENTINEL_QUOTA = {'provider': 'codex', 'label': 'Weekly', 'percentage': 4}
+_OPENROUTER_SNAPSHOT = {
+    'provider': 'openrouter',
+    'label': 'Weekly Spend',
+    'percentage': 30,
+    'usage_usd': 3.0,
+    'remaining_usd': 7.0,
+}
+
+
+def _stub_dashboard_collectors(monkeypatch):
+    """Isolate OpenRouter wiring: no network, no local files, no real .env."""
+    monkeypatch.setattr('auto_usage.load_env', lambda: None)
+    monkeypatch.setattr('auto_usage.export_codex', lambda *a, **k: None)
+    monkeypatch.setattr('auto_usage.load_codex', lambda: {})
+    monkeypatch.setattr('auto_usage.load_cursor', lambda: {})
+    monkeypatch.setattr('auto_usage.load_glm', lambda: {})
+    monkeypatch.setattr('auto_usage.load_glm_quota', lambda: [])
+    monkeypatch.setattr('auto_usage.load_ollama_quota', lambda: [])
+    monkeypatch.setattr('auto_usage.load_codex_quota', lambda: [_CODEX_SENTINEL_QUOTA])
+    monkeypatch.setattr('auto_usage.export_claude_code_quota', lambda: [])
+    monkeypatch.setattr('auto_usage.export_antigravity_quota', lambda: [])
+    monkeypatch.setattr('auto_usage.load_claude_code', lambda **k: {})
+    monkeypatch.setattr('auto_usage._dsh_usage.load_dsh_detailed', lambda **k: {})
+    monkeypatch.setattr(
+        'auto_usage.load_opencode',
+        lambda **k: {
+            'anthropic': {},
+            'gemini': {},
+            'glm_opencode': {},
+            'gpt_opencode': {},
+            'deepseek': {},
+            'grok': {},
+            'opencode_other': {},
+        },
+    )
+    monkeypatch.setattr('auto_usage.load_antigravity', lambda: {})
+    monkeypatch.setattr('auto_usage.load_opencode_turn_intervals', lambda *a, **k: [])
+    monkeypatch.setattr('auto_usage.load_codex_turn_intervals', lambda *a, **k: [])
+    monkeypatch.setattr('auto_usage.compute_daily_ai_active_seconds', lambda *a, **k: {})
+    for name in (
+        'CURSOR_COOKIE',
+        'GLM_BEARER_TOKEN',
+        'OLLAMA_COOKIE',
+        'GROK_COOKIE',
+        'TAVILY_API_KEY',
+        'OPENROUTER_API_KEY',
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    captured = {}
+
+    def fake_generate_dashboard(*args, **kwargs):
+        captured['quotas'] = list(kwargs.get('quotas') or [])
+        return {'quotas': captured['quotas']}
+
+    monkeypatch.setattr('auto_usage.generate_dashboard', fake_generate_dashboard)
+    return captured
+
+
+def _install_openrouter_export(monkeypatch, export_fn):
+    monkeypatch.setattr(
+        'auto_usage._openrouter_usage',
+        SimpleNamespace(export_openrouter_quota=export_fn),
+        raising=False,
+    )
+
+
+def test_openrouter_quota_appended_when_api_key_present(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+    calls = []
+
+    def fake_export(key):
+        calls.append(key)
+        return [_OPENROUTER_SNAPSHOT]
+
+    _install_openrouter_export(monkeypatch, fake_export)
+    monkeypatch.setenv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert calls == ['test-openrouter-key']
+    quotas = payload['quotas']
+    assert _CODEX_SENTINEL_QUOTA in quotas
+    assert _OPENROUTER_SNAPSHOT in quotas
+
+
+def test_openrouter_export_skipped_when_api_key_absent(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+    calls = []
+
+    def fake_export(key):
+        calls.append(key)
+        return [_OPENROUTER_SNAPSHOT]
+
+    _install_openrouter_export(monkeypatch, fake_export)
+
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert calls == []
+    assert all(q.get('provider') != 'openrouter' for q in payload['quotas'])
+    assert _CODEX_SENTINEL_QUOTA in payload['quotas']
+
+
+def test_openrouter_export_error_leaves_other_quotas(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+    calls = []
+
+    def boom(key):
+        calls.append(key)
+        raise RuntimeError('openrouter unavailable')
+
+    _install_openrouter_export(monkeypatch, boom)
+    monkeypatch.setenv('OPENROUTER_API_KEY', 'test-openrouter-key')
+
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert calls == ['test-openrouter-key']
+    assert _CODEX_SENTINEL_QUOTA in payload['quotas']
+    assert all(q.get('provider') != 'openrouter' for q in payload['quotas'])

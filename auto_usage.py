@@ -26,6 +26,7 @@ import requests
 import antigravity_usage as _antigravity_usage
 import dsh_usage as _dsh_usage
 import grok_usage as _grok_usage
+import openrouter_usage as _openrouter_usage
 import tavily_usage as _tavily_usage
 from pricing_config import get_pricing, calc_cost
 
@@ -2151,7 +2152,7 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
         print(f"Failed to fetch Claude Code quota: {e}")
         claude_quota = []
 
-    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor -> Tavily.
+    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor -> Tavily -> OpenRouter.
     print("Loading Antigravity IDE quota from live Language Server...")
     antigravity_quota: list[QuotaSnapshot] = []
     try:
@@ -2184,7 +2185,16 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
             tavily_quota = cast(list[QuotaSnapshot], _tavily_usage.export_tavily_quota(tavily_key))
         except Exception as e:
             print(f"Failed to fetch Tavily quota: {e}")
-    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota + tavily_quota
+
+    openrouter_quota: list[QuotaSnapshot] = []
+    openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+    if openrouter_key:
+        print("Loading OpenRouter spend quota...")
+        try:
+            openrouter_quota = cast(list[QuotaSnapshot], _openrouter_usage.export_openrouter_quota(openrouter_key))
+        except Exception as e:
+            print(f"Failed to fetch OpenRouter quota: {e}")
+    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota + tavily_quota + openrouter_quota
 
     print("Loading Claude Code data...")
     start_d = datetime.strptime(start_date, '%Y-%m-%d').date()
