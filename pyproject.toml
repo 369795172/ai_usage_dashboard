@@ -38,6 +38,8 @@ py-modules = [
     "local_display_service",
     "opencode_token_analyzer",
     "openrouter_usage",
+    "gemini_api_usage",
+    "ark_api_usage",
     "pricing_config",
 ]
 

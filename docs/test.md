@@ -16,8 +16,20 @@ OpenRouter coverage (all monkeypatched, no network):
 
 - `tests/test_openrouter_usage.py`: parse/fetch/export of the key spend window (`limit - limit_remaining`, never lifetime `usage`)
 - `tests/test_auto_usage.py`: `OPENROUTER_API_KEY` wiring in `build_latest_dashboard_payload` (key present appends snapshot; key absent skips export; export error still builds other quotas)
+
+Gemini Developer API spend (local JSONL, no network, no `GEMINI_API_KEY`):
+
+- `tests/test_gemini_api_usage.py`: Veo/image price table, today vs 30d window, failed rows skipped, missing ledger returns empty
+- `tests/test_auto_usage.py`: ledger export is appended; export error still builds other quotas; stdout prints USD not a fake 0% bar
 - `tests/test_dashboard_models.py`: optional `usage_usd` / `remaining_usd` on `QuotaSnapshot` and `AutomationQuotaSnapshot` (default `None` so old payloads validate; every field has a description)
 - `tests/test_local_display_service.py`: `GET /api/v1/quotas` passes USD fields through when present and emits `null` when absent
+
+Ark Seedance spend (local JSONL, no network, no `ARK_API_KEY`):
+
+- `tests/test_ark_api_usage.py`: 2.0/fast CNY table, tokens override, today vs 30d, failed rows skipped, missing ledger still emits ¥0
+- `tests/test_auto_usage.py`: ledger export is appended; export error still builds other quotas; stdout prints ¥ not a fake 0% bar
+- `tests/test_dashboard_models.py`: optional `usage_cny` / `remaining_cny` (default `None`)
+- `tests/test_local_display_service.py`: `GET /api/v1/quotas` passes CNY fields through as `null` when absent
 
 ## Service Smoke Test
 

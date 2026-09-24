@@ -206,6 +206,22 @@ def test_quota_snapshot_usd_fields_default_none_so_old_payloads_round_trip():
     dumped = snap.model_dump(exclude_defaults=True)
     assert 'usage_usd' not in dumped
     assert 'remaining_usd' not in dumped
+    assert 'usage_cny' not in dumped
+    assert 'remaining_cny' not in dumped
+
+
+def test_quota_snapshot_accepts_ark_cny_fields():
+    snap = QuotaSnapshot.model_validate({
+        'provider': 'ark_api',
+        'label': '30d',
+        'usage_cny': 9.47,
+        'remaining_cny': 10.53,
+        'percentage': 47,
+    })
+
+    assert snap.usage_cny == 9.47
+    assert snap.remaining_cny == 10.53
+    assert snap.usage_usd is None
 
 
 def test_automation_quota_snapshot_accepts_usd_fields():
@@ -226,6 +242,6 @@ def test_automation_quota_snapshot_accepts_usd_fields():
 
 def test_quota_usd_fields_carry_descriptions():
     for model_cls in (QuotaSnapshot, AutomationQuotaSnapshot):
-        for name in ('usage_usd', 'remaining_usd'):
+        for name in ('usage_usd', 'remaining_usd', 'usage_cny', 'remaining_cny'):
             field = model_cls.model_fields[name]
             assert field.description, f'{model_cls.__name__}.{name} missing description'

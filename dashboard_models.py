@@ -94,6 +94,8 @@ class QuotaSnapshot(BaseModel):
     remaining: Optional[int] = Field(default=None, description='Remaining count before the window resets. Present only for the GLM monthly tool quota.')
     usage_usd: Optional[float] = Field(default=None, description='USD already spent in the current key spend window. Present for OpenRouter; the window spend is limit minus limit_remaining, not lifetime usage.')
     remaining_usd: Optional[float] = Field(default=None, description='USD remaining in the current key spend window. Present for OpenRouter.')
+    usage_cny: Optional[float] = Field(default=None, description='CNY already spent in the current window. Present for Ark Seedance local ledger estimates.')
+    remaining_cny: Optional[float] = Field(default=None, description='CNY remaining against an optional Ark monthly budget when ARK_API_BUDGET_CNY is set.')
 
 
 class AutomationQuotaSnapshot(BaseModel):
@@ -109,6 +111,8 @@ class AutomationQuotaSnapshot(BaseModel):
     remaining: Optional[int] = Field(default=None, description='Absolute count remaining when the upstream provider exposes it.')
     usage_usd: Optional[float] = Field(default=None, description='USD already spent in the current window when the upstream provider exposes it.')
     remaining_usd: Optional[float] = Field(default=None, description='USD remaining in the current window when the upstream provider exposes it.')
+    usage_cny: Optional[float] = Field(default=None, description='CNY already spent in the current window when the collector exposes it.')
+    remaining_cny: Optional[float] = Field(default=None, description='CNY remaining in the current window when an optional budget is set.')
 
 
 class QuotasResponse(BaseModel):

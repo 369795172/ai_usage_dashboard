@@ -24,7 +24,9 @@ from matplotlib.font_manager import FontProperties
 import requests
 
 import antigravity_usage as _antigravity_usage
+import ark_api_usage as _ark_api_usage
 import dsh_usage as _dsh_usage
+import gemini_api_usage as _gemini_api_usage
 import grok_usage as _grok_usage
 import openrouter_usage as _openrouter_usage
 import tavily_usage as _tavily_usage
@@ -63,6 +65,7 @@ GLM_MODEL_PREFIXES = ('glm-',)
 # usage windows (5-hour token quota, weekly token quota, monthly tool quota).
 GLM_QUOTA_URL = 'https://api.z.ai/api/monitor/usage/quota/limit'
 OUTPUT_GLM_QUOTA_JSON = 'glm_quota.json'
+OUTPUT_CURSOR_QUOTA_JSON = 'cursor_quota.json'
 
 # Human-readable labels for the (type, unit) pairs returned by the Z.ai quota
 # API. These match the dashboard's own titles and are used for stdout and JSON
@@ -119,6 +122,10 @@ class QuotaSnapshot(TypedDict, total=False):
     next_reset_iso: str | None
     usage: int | None
     remaining: int | None
+    usage_usd: float | None
+    remaining_usd: float | None
+    usage_cny: float | None
+    remaining_cny: float | None
 
 
 # Codex CLI rate_limits window -> human-readable label. Codex session JSONL
@@ -575,7 +582,11 @@ def parse_cursor_usage_summary(body: dict) -> list[QuotaSnapshot]:
 
 
 def export_cursor_quota(cookie_str: str) -> list[QuotaSnapshot]:
-    """Fetch the monthly plan usage summary from cursor.com with the dashboard cookie."""
+    """Fetch the monthly plan usage summary from cursor.com with the dashboard cookie.
+
+    Snapshots are cached to cursor_quota.json so ticks without a live cookie
+    (session token rotates while a dashboard tab polls) still render the bar.
+    """
     url = 'https://cursor.com/api/usage-summary'
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:151.0) Gecko/20100101 Firefox/151.0',
@@ -585,7 +596,11 @@ def export_cursor_quota(cookie_str: str) -> list[QuotaSnapshot]:
     }
     resp = requests.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
-    return parse_cursor_usage_summary(resp.json())
+    snapshots = parse_cursor_usage_summary(resp.json())
+    json_path = os.path.join(SCRIPT_DIR, OUTPUT_CURSOR_QUOTA_JSON)
+    with open(json_path, 'w') as f:
+        json.dump(snapshots, f, indent=2)
+    return snapshots
 
 def export_glm(bearer_token, start_date, end_date):
     """Export GLM usage data, splitting into monthly chunks to avoid API limits."""
@@ -778,6 +793,29 @@ def load_glm_quota(path: str | None = None) -> list[GlmQuotaSnapshot]:
     with open(path) as f:
         body = json.load(f)
     return normalize_glm_quota(body)
+
+
+def load_cursor_quota(path: str | None = None) -> list[QuotaSnapshot]:
+    """Load the cached cursor_quota.json, returning [] when absent or malformed.
+
+    The live fetch rotates with the browser session (see export_cursor_quota);
+    cached snapshots let offline runs and refresh ticks reuse the last value.
+    """
+    target = path or os.path.join(SCRIPT_DIR, OUTPUT_CURSOR_QUOTA_JSON)
+    if not os.path.exists(target):
+        return []
+    try:
+        with open(target) as f:
+            body = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(body, list):
+        return []
+    out: list[QuotaSnapshot] = []
+    for item in body:
+        if isinstance(item, dict) and item.get('provider') == 'cursor':
+            out.append(cast(QuotaSnapshot, item))
+    return out
 
 
 def format_glm_quota_block(snapshots: list[GlmQuotaSnapshot]) -> str:
@@ -976,8 +1014,14 @@ def load_codex_quota(start_date: str | None = None, end_date: str | None = None)
 
 def _provider_display_name(provider: str) -> str:
     """Normalize provider names for display: GLM all-caps, others title-cased."""
-    if provider == 'glm':
-        return 'GLM'
+    names = {
+        'glm': 'GLM',
+        'gemini_api': 'Gemini API',
+        'ark_api': 'Ark API',
+        'openrouter': 'OpenRouter',
+    }
+    if provider in names:
+        return names[provider]
     return provider.capitalize()
 
 
@@ -985,16 +1029,40 @@ def format_quotas_block(snapshots: list[QuotaSnapshot]) -> str:
     """Render the unified quota snapshot list as a multi-line stdout block.
 
     Grouped by provider. Each line shows provider, window label, used
-    percentage, and 'reset at <ISO>' when available.
+    percentage, and 'reset at <ISO>' when available. USD/CNY spend windows
+    (OpenRouter, Gemini API, Ark API) print money instead of a fake 0% bar.
     """
     if not snapshots:
         return ''
     lines = ['\nAI Usage Quotas:']
     for s in snapshots:
         provider = _provider_display_name(s.get('provider', ''))
-        pct = s.get('percentage', 0)
         reset_iso = s.get('next_reset_iso')
         reset_part = f'  reset @ {reset_iso}' if reset_iso else ''
+        money_bits: list[str] = []
+        usage_usd = s.get('usage_usd')
+        if usage_usd is not None:
+            usd_part = f'${float(usage_usd):.2f}'
+            remaining_usd = s.get('remaining_usd')
+            if remaining_usd is not None:
+                usd_part += f' / ${float(remaining_usd):.2f} left'
+            money_bits.append(usd_part)
+        usage_cny = s.get('usage_cny')
+        if usage_cny is not None:
+            cny_part = f'¥{float(usage_cny):.2f}'
+            remaining_cny = s.get('remaining_cny')
+            if remaining_cny is not None:
+                cny_part += f' / ¥{float(remaining_cny):.2f} left'
+            money_bits.append(cny_part)
+        if money_bits:
+            money_part = ' + '.join(money_bits)
+            pct = s.get('percentage')
+            pct_part = f'  {pct}% used' if pct is not None else ''
+            lines.append(
+                f"  {provider} {s.get('label', '')}: {money_part}{pct_part}{reset_part}"
+            )
+            continue
+        pct = s.get('percentage', 0)
         lines.append(f"  {provider} {s.get('label', '')}: {pct}% used{reset_part}")
     return '\n'.join(lines)
 
@@ -2152,7 +2220,7 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
         print(f"Failed to fetch Claude Code quota: {e}")
         claude_quota = []
 
-    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor -> Tavily -> OpenRouter.
+    # Provider order for display: z.ai GLM -> Ollama -> Codex -> Claude Code -> Antigravity -> Grok -> Cursor -> Tavily -> OpenRouter -> Gemini API ledger.
     print("Loading Antigravity IDE quota from live Language Server...")
     antigravity_quota: list[QuotaSnapshot] = []
     try:
@@ -2169,13 +2237,13 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
         except Exception as e:
             print(f"Failed to fetch Grok quota: {e}")
 
-    cursor_quota: list[QuotaSnapshot] = []
     if cursor_cookie:
         print("Loading Cursor usage-summary quota...")
         try:
-            cursor_quota = export_cursor_quota(cursor_cookie)
+            export_cursor_quota(cursor_cookie)
         except Exception as e:
             print(f"Failed to fetch Cursor quota: {e}")
+    cursor_quota = load_cursor_quota()
 
     tavily_quota: list[QuotaSnapshot] = []
     tavily_key = os.environ.get('TAVILY_API_KEY', '')
@@ -2194,7 +2262,21 @@ def build_latest_dashboard_payload(days: int = 30, *, no_cost: bool = False, ski
             openrouter_quota = cast(list[QuotaSnapshot], _openrouter_usage.export_openrouter_quota(openrouter_key))
         except Exception as e:
             print(f"Failed to fetch OpenRouter quota: {e}")
-    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota + tavily_quota + openrouter_quota
+
+    gemini_api_quota: list[QuotaSnapshot] = []
+    print("Loading Gemini Developer API spend from local ledger...")
+    try:
+        gemini_api_quota = cast(list[QuotaSnapshot], _gemini_api_usage.export_gemini_api_quota())
+    except Exception as e:
+        print(f"Failed to load Gemini API spend: {e}")
+
+    ark_api_quota: list[QuotaSnapshot] = []
+    print("Loading Ark Seedance spend from local ledger...")
+    try:
+        ark_api_quota = cast(list[QuotaSnapshot], _ark_api_usage.export_ark_api_quota())
+    except Exception as e:
+        print(f"Failed to load Ark API spend: {e}")
+    quotas = glm_quota_to_unified(glm_quota) + ollama_quota + codex_quota + claude_quota + antigravity_quota + grok_quota + cursor_quota + tavily_quota + openrouter_quota + gemini_api_quota + ark_api_quota
 
     print("Loading Claude Code data...")
     start_d = datetime.strptime(start_date, '%Y-%m-%d').date()

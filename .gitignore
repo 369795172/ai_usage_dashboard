@@ -21,7 +21,10 @@ token_usage_epaper.png
 token_usage_eink.json
 antigravity_usage_cache.json
 antigravity_sync_metadata.json
+gemini_api_ledger.jsonl
+ark_api_ledger.jsonl
 update.log
 eink/e1002/secrets.h
 .private_git_backups/
 logs/
+cursor_quota.json

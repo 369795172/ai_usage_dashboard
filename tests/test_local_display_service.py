@@ -116,6 +116,8 @@ def test_get_quotas_returns_compact_automation_shape(monkeypatch):
                 "remaining": None,
                 "usage_usd": None,
                 "remaining_usd": None,
+                "usage_cny": None,
+                "remaining_cny": None,
             },
             {
                 "provider": "glm",
@@ -128,6 +130,8 @@ def test_get_quotas_returns_compact_automation_shape(monkeypatch):
                 "remaining": 3000,
                 "usage_usd": None,
                 "remaining_usd": None,
+                "usage_cny": None,
+                "remaining_cny": None,
             },
             {
                 "provider": "openrouter",
@@ -140,6 +144,8 @@ def test_get_quotas_returns_compact_automation_shape(monkeypatch):
                 "remaining": None,
                 "usage_usd": 3.0,
                 "remaining_usd": 7.0,
+                "usage_cny": None,
+                "remaining_cny": None,
             },
         ],
     }

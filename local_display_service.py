@@ -108,6 +108,8 @@ def quotas() -> dict[str, Any]:
             "remaining": item.get("remaining"),
             "usage_usd": item.get("usage_usd"),
             "remaining_usd": item.get("remaining_usd"),
+            "usage_cny": item.get("usage_cny"),
+            "remaining_cny": item.get("remaining_cny"),
         })
     return {
         "generated_at": (payload.get("meta") or {}).get("generated_at"),

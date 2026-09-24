@@ -31,6 +31,7 @@ from auto_usage import (
     load_codex,
     load_codex_quota,
     load_cursor,
+    load_cursor_quota,
     load_glm,
     load_glm_quota,
     load_ollama_quota,
@@ -346,6 +347,28 @@ def test_parse_ccusage_daily_date_accepts_old_and_new_formats():
 
 def test_load_cursor_returns_empty_when_export_missing(tmp_path):
     assert load_cursor(tmp_path / 'missing-cursor.csv') == {}
+
+
+def test_load_cursor_quota_missing_file_returns_empty(tmp_path):
+    assert load_cursor_quota(tmp_path / 'missing-cursor_quota.json') == []
+
+
+def test_load_cursor_quota_filters_non_cursor_entries(tmp_path):
+    path = tmp_path / 'cursor_quota.json'
+    path.write_text(
+        '[{"provider": "cursor", "label": "monthly", "percentage": 63},'
+        ' {"provider": "glm", "label": "5h", "percentage": 10}]'
+    )
+    snapshots = load_cursor_quota(path)
+    assert len(snapshots) == 1
+    assert snapshots[0]['provider'] == 'cursor'
+    assert snapshots[0]['percentage'] == 63
+
+
+def test_load_cursor_quota_malformed_file_returns_empty(tmp_path):
+    path = tmp_path / 'cursor_quota.json'
+    path.write_text('{"not": "a list"}')
+    assert load_cursor_quota(path) == []
 
 
 def test_export_cursor_writes_csv_from_filtered_usage_events(monkeypatch, tmp_path):
@@ -1445,8 +1468,22 @@ def _stub_dashboard_collectors(monkeypatch):
         'GROK_COOKIE',
         'TAVILY_API_KEY',
         'OPENROUTER_API_KEY',
+        'GEMINI_API_LEDGER_PATH',
+        'GEMINI_API_BUDGET_USD',
+        'ARK_API_LEDGER_PATH',
+        'ARK_API_BUDGET_CNY',
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        'auto_usage._gemini_api_usage',
+        SimpleNamespace(export_gemini_api_quota=lambda: []),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        'auto_usage._ark_api_usage',
+        SimpleNamespace(export_ark_api_quota=lambda: []),
+        raising=False,
+    )
 
     captured = {}
 
@@ -1518,3 +1555,131 @@ def test_openrouter_export_error_leaves_other_quotas(monkeypatch):
     assert calls == ['test-openrouter-key']
     assert _CODEX_SENTINEL_QUOTA in payload['quotas']
     assert all(q.get('provider') != 'openrouter' for q in payload['quotas'])
+
+
+_GEMINI_API_SNAPSHOTS = [
+    {'provider': 'gemini_api', 'label': 'today', 'usage_usd': 3.2},
+    {'provider': 'gemini_api', 'label': '30d', 'usage_usd': 4.4},
+]
+
+
+def _install_gemini_api_export(monkeypatch, export_fn):
+    monkeypatch.setattr(
+        'auto_usage._gemini_api_usage',
+        SimpleNamespace(export_gemini_api_quota=export_fn),
+        raising=False,
+    )
+
+
+def test_gemini_api_quota_appended_from_ledger(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+    calls = []
+
+    def fake_export():
+        calls.append('hit')
+        return list(_GEMINI_API_SNAPSHOTS)
+
+    _install_gemini_api_export(monkeypatch, fake_export)
+
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert calls == ['hit']
+    quotas = payload['quotas']
+    assert _CODEX_SENTINEL_QUOTA in quotas
+    for row in _GEMINI_API_SNAPSHOTS:
+        assert row in quotas
+
+
+def test_gemini_api_export_error_leaves_other_quotas(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+
+    def boom():
+        raise RuntimeError('ledger unreadable')
+
+    _install_gemini_api_export(monkeypatch, boom)
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert _CODEX_SENTINEL_QUOTA in payload['quotas']
+    assert all(q.get('provider') != 'gemini_api' for q in payload['quotas'])
+
+
+def test_format_quotas_block_prints_gemini_usd_without_fake_percent():
+    block = format_quotas_block(
+        [
+            {'provider': 'gemini_api', 'label': 'today', 'usage_usd': 3.2},
+            {
+                'provider': 'gemini_api',
+                'label': '30d',
+                'usage_usd': 4.4,
+                'remaining_usd': 5.6,
+                'percentage': 44,
+            },
+        ]
+    )
+    assert 'Gemini API today: $3.20' in block
+    assert 'Gemini API 30d: $4.40 / $5.60 left  44% used' in block
+    assert '0% used' not in block
+
+
+_ARK_API_SNAPSHOTS = [
+    {'provider': 'ark_api', 'label': 'today', 'usage_cny': 9.4723},
+    {'provider': 'ark_api', 'label': '30d', 'usage_cny': 9.4723},
+]
+
+
+def _install_ark_api_export(monkeypatch, export_fn):
+    monkeypatch.setattr(
+        'auto_usage._ark_api_usage',
+        SimpleNamespace(export_ark_api_quota=export_fn),
+        raising=False,
+    )
+
+
+def test_ark_api_quota_appended_from_ledger(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+    calls = []
+
+    def fake_export():
+        calls.append('hit')
+        return list(_ARK_API_SNAPSHOTS)
+
+    _install_ark_api_export(monkeypatch, fake_export)
+
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert calls == ['hit']
+    quotas = payload['quotas']
+    assert _CODEX_SENTINEL_QUOTA in quotas
+    for row in _ARK_API_SNAPSHOTS:
+        assert row in quotas
+
+
+def test_ark_api_export_error_leaves_other_quotas(monkeypatch):
+    _stub_dashboard_collectors(monkeypatch)
+
+    def boom():
+        raise RuntimeError('ledger unreadable')
+
+    _install_ark_api_export(monkeypatch, boom)
+    payload = build_latest_dashboard_payload(days=1, no_cost=True, skip_desktop_chart=True)
+
+    assert _CODEX_SENTINEL_QUOTA in payload['quotas']
+    assert all(q.get('provider') != 'ark_api' for q in payload['quotas'])
+
+
+def test_format_quotas_block_prints_ark_cny_without_fake_percent():
+    block = format_quotas_block(
+        [
+            {'provider': 'ark_api', 'label': 'today', 'usage_cny': 0.0},
+            {
+                'provider': 'ark_api',
+                'label': '30d',
+                'usage_cny': 9.47,
+                'remaining_cny': 10.53,
+                'percentage': 47,
+            },
+        ]
+    )
+    assert 'Ark API today: ¥0.00' in block
+    assert 'Ark API 30d: ¥9.47 / ¥10.53 left  47% used' in block
+    assert '0% used' not in block
